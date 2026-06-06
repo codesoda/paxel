@@ -101,7 +101,10 @@ class GeminiNormalizer
   def replay_records(metadata)
     msgs = {} # Ruby Hash preserves insertion order; re-assign keeps position.
 
-    File.foreach(jsonl_path) do |line|
+    # encoding: "UTF-8" so `.scrub` cleans invalid bytes — the client Docker image
+    # has no locale (default_external = ASCII-8BIT), under which scrub is a no-op and
+    # invalid bytes crash a later String op (PAXEL-CLIENT-1G).
+    File.foreach(jsonl_path, encoding: "UTF-8") do |line|
       line = line.scrub.strip
       next if line.empty?
 
@@ -127,6 +130,12 @@ class GeminiNormalizer
       Rails.logger.warn("GeminiNormalizer: replay line failed: #{e.message}")
     end
 
+    msgs.values
+  rescue SystemCallError, IOError, ArgumentError => e
+    # The File.foreach call itself can raise on an unreadable / oddly-encoded
+    # file or path (e.g. ArgumentError "negative string size"), escaping the
+    # per-line rescue above and sinking the whole upload (PAXEL-CLIENT-19).
+    Rails.logger.warn("[GeminiNormalizer] unreadable transcript #{jsonl_path}: #{e.class}: #{e.message}")
     msgs.values
   end
 

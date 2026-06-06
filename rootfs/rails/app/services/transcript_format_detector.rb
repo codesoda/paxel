@@ -111,15 +111,21 @@ class TranscriptFormatDetector
 
   def read_first_lines(count)
     lines = []
-    File.foreach(@file_path) do |line|
+    # encoding: "UTF-8" so `.scrub` cleans invalid bytes regardless of system locale
+    # (the client image's default_external is ASCII-8BIT, under which scrub is a
+    # no-op) — this is the FIRST read of every transcript, before any normalizer
+    # (PAXEL-CLIENT-1G). The rescue matches the normalizers' so an unreadable /
+    # oddly-encoded file (e.g. ArgumentError "negative string size") here can't sink
+    # the upload before they get a chance to run (PAXEL-CLIENT-19).
+    File.foreach(@file_path, encoding: "UTF-8") do |line|
       stripped = line.scrub.strip
       next if stripped.empty?
       lines << stripped
       break if lines.size >= count
     end
     lines
-  rescue Errno::EACCES, Errno::ENOENT => e
-    Rails.logger.warn("TranscriptFormatDetector: cannot read #{@file_path}: #{e.message}")
+  rescue SystemCallError, IOError, ArgumentError => e
+    Rails.logger.warn("TranscriptFormatDetector: cannot read #{@file_path}: #{e.class}: #{e.message}")
     []
   end
 

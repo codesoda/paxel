@@ -1176,8 +1176,8 @@ class ClientPipeline
       # Parse total repo commit count (from git rev-list --count HEAD)
       count_file = Dir.glob(File.join(git_dir, "*_commit_count.txt")).first ||
                    File.join(git_dir, "#{encoded}_commit_count.txt")
-      if File.exist?(count_file)
-        total_repo_commits = File.read(count_file).strip.to_i
+      if (count_content = safe_git_read(count_file))
+        total_repo_commits = count_content.strip.to_i
         if total_repo_commits > 0
           project.git_metrics ||= {}
           project.git_metrics["total_repo_commits"] = total_repo_commits
@@ -1190,8 +1190,8 @@ class ClientPipeline
       commits_file = Dir.glob(File.join(git_dir, "*_commits.jsonl"))
                         .reject { |f| f.end_with?("_author_commits.jsonl") }.first ||
                      File.join(git_dir, "#{encoded}_commits.jsonl")
-      if File.exist?(commits_file)
-        commits = parse_commits_tsv(File.read(commits_file), source: "recent_commits")
+      if (commits_content = safe_git_read(commits_file))
+        commits = parse_commits_tsv(commits_content, source: "recent_commits")
         project.recent_commits = commits if commits.any?
       end
 
@@ -1201,8 +1201,8 @@ class ClientPipeline
       numstat_file = Dir.glob(File.join(git_dir, "*_numstat.txt"))
                         .reject { |f| f.end_with?("_author_numstat.txt") }.first ||
                      File.join(git_dir, "#{encoded}_numstat.txt")
-      if File.exist?(numstat_file)
-        numstat = parse_numstat_file(File.read(numstat_file))
+      if (numstat_content = safe_git_read(numstat_file))
+        numstat = parse_numstat_file(numstat_content)
         if numstat.any?
           project.git_metrics ||= {}
           project.git_metrics["numstat"] = numstat
@@ -1212,15 +1212,15 @@ class ClientPipeline
 
       # Parse author-filtered commits (for episode linking — wider date range)
       author_commits_path = File.join(git_dir, "#{encoded}_author_commits.jsonl")
-      if File.exist?(author_commits_path)
-        author_commits = parse_commits_tsv(File.read(author_commits_path), source: "author_commits")
+      if (author_commits_content = safe_git_read(author_commits_path))
+        author_commits = parse_commits_tsv(author_commits_content, source: "author_commits")
         project.author_recent_commits = author_commits if author_commits.any?
       end
 
       # Parse author-filtered numstat (for CommitGrouper LOC stats)
       author_numstat_path = File.join(git_dir, "#{encoded}_author_numstat.txt")
-      if File.exist?(author_numstat_path)
-        author_numstat = parse_numstat_file(File.read(author_numstat_path))
+      if (author_numstat_content = safe_git_read(author_numstat_path))
+        author_numstat = parse_numstat_file(author_numstat_content)
         if author_numstat.any?
           project.git_metrics ||= {}
           project.git_metrics["author_numstat"] = author_numstat
@@ -1268,6 +1268,19 @@ class ClientPipeline
     commits
   end
 
+  # Read a git-data file tolerantly. These files live under a bind-mounted
+  # /transcripts (--all) or the archive sidecar, so one can vanish between
+  # Dir.glob/File.exist? and the read (TOCTOU) or sit on an unreadable mount.
+  # Git metrics are non-essential — a single missing/unreadable file must NOT sink
+  # the whole upload (PAXEL-CLIENT-1N/1P: an unrescued IO.read ENOENT in
+  # collect_git_data did exactly that). Returns nil; every caller skips on nil.
+  def safe_git_read(path)
+    File.read(path)
+  rescue SystemCallError, IOError => e
+    debug("collect_git_data: skipping unreadable git file #{File.basename(path.to_s)}: #{e.class}")
+    nil
+  end
+
   # Source dir for `--all` aggregate git data, bind-mounted read-only by the host.
   # Gated on CLIENT_MODE=1 (baked into Dockerfile.client) so a stray /paxel_sidecar
   # on the Rails server can never feed server-side uploads (mirrors
@@ -1287,8 +1300,10 @@ class ClientPipeline
     numstat_files = Dir.glob(File.join(git_dir, "*_numstat.txt")).sort
     combined_numstat = {}
     numstat_files.each do |f|
+      content = safe_git_read(f)
+      next unless content
       repo_token = File.basename(f).sub(/_numstat\.txt\z/, "")
-      parse_numstat_file(File.read(f)).each do |sha, entry|
+      parse_numstat_file(content).each do |sha, entry|
         # Namespace by repo so a fork + upstream sharing a sha don't collide.
         # VelocityMetricsService sums values, so the key shape is irrelevant.
         combined_numstat["#{repo_token}:#{sha}"] = entry
@@ -1298,7 +1313,7 @@ class ClientPipeline
     return "no aggregate git data" if combined_numstat.empty?
 
     total_repo_commits = Dir.glob(File.join(git_dir, "*_commit_count.txt")).sum do |f|
-      File.read(f).strip.to_i
+      (safe_git_read(f) || "0").strip.to_i
     end
     repo_count = numstat_files.size
 

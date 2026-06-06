@@ -76,7 +76,10 @@ class OpencodeNormalizer
     skipped = 0
     counts = Hash.new(0)
 
-    File.foreach(jsonl_path) do |line|
+    # encoding: "UTF-8" so `.scrub` cleans invalid bytes — the client Docker image
+    # has no locale (default_external = ASCII-8BIT), under which scrub is a no-op and
+    # invalid bytes crash a later String op (PAXEL-CLIENT-1G).
+    File.foreach(jsonl_path, encoding: "UTF-8") do |line|
       line = line.scrub.strip
       next if line.empty?
 
@@ -103,6 +106,13 @@ class OpencodeNormalizer
     end
 
     log_summary(metadata, entries.size, skipped, counts)
+    entries
+  rescue SystemCallError, IOError, ArgumentError => e
+    # The File.foreach call itself (not a single line) can raise on an unreadable
+    # or oddly-encoded file/path (e.g. ArgumentError "negative string size") — that
+    # escapes the per-line rescue above and would sink the whole upload
+    # (PAXEL-CLIENT-19). Keep what parsed so far.
+    Rails.logger.warn("[OpencodeNormalizer] unreadable transcript #{jsonl_path}: #{e.class}: #{e.message}")
     entries
   end
 

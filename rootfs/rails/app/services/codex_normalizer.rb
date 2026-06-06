@@ -72,7 +72,10 @@ class CodexNormalizer
     skipped = 0
     counts = Hash.new(0)
 
-    File.foreach(jsonl_path) do |line|
+    # encoding: "UTF-8" so `.scrub` cleans invalid bytes — the client Docker image
+    # has no locale (default_external = ASCII-8BIT), under which scrub is a no-op and
+    # invalid bytes crash a later String op (PAXEL-CLIENT-1G).
+    File.foreach(jsonl_path, encoding: "UTF-8") do |line|
       line = line.scrub.strip
       next if line.empty?
 
@@ -131,6 +134,14 @@ class CodexNormalizer
       "user=#{counts['user']} assistant=#{counts['assistant']}"
     )
 
+    entries
+  rescue SystemCallError, IOError, ArgumentError => e
+    # One unreadable/oddly-encoded transcript file must not sink the whole upload
+    # (e.g. File.foreach raising ArgumentError "negative string size" on a bad path
+    # encoding) — PAXEL-CLIENT-19. Keep what parsed so far + the agent_type so
+    # downstream detection still works.
+    Rails.logger.warn("[CodexNormalizer] unreadable transcript #{jsonl_path}: #{e.class}: #{e.message}")
+    metadata[:agent_type] = "codex_cli"
     entries
   end
 

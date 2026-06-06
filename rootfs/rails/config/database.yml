@@ -15,7 +15,12 @@ default: &default
   # real multi-session runs. Matches the server-config default the client image
   # previously inherited; the upload script forwards DB_POOL to scale it.
   pool: <%= ENV["DB_POOL"] || ENV.fetch("RAILS_MAX_THREADS") { 50 } %>
-  timeout: 5000
+  # 30s busy timeout (was 5s): the 20-thread narrative pool + large LlmCall.create!
+  # writes contend on SQLite's single WAL writer; 5s wasn't enough and a burst of
+  # SQLite3::BusyException tripped the pipeline circuit breaker mid-upload
+  # (PAXEL-CLIENT-9). Kept in sync with the ?timeout=30000 in Dockerfile.client's
+  # DATABASE_URL (which overrides this for the production connection).
+  timeout: 30000
 
 development:
   <<: *default

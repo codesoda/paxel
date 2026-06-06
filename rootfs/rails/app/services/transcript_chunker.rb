@@ -71,7 +71,10 @@ class TranscriptChunker
 
     chunks = group_into_chunks(messages)
     chunks.each_with_index do |chunk_content, index|
-      text = chunk_content.join("\n").delete("\x00")
+      # .scrub before .delete (same as strip_null_bytes) — the subagent prefix above
+      # joins in parent_prompt unscrubbed, and String#delete raises on invalid UTF-8
+      # bytes (PAXEL-CLIENT-1M).
+      text = chunk_content.join("\n").scrub.delete("\x00")
       transcript_session.chunks.create!(
         position: index,
         content: text,
@@ -132,15 +135,27 @@ class TranscriptChunker
       return entries
     end
 
-    File.foreach(jsonl_path) do |line|
-      line = line.scrub.delete("\x00").strip
-      next if line.empty?
+    # Read as UTF-8 so `.scrub` actually cleans invalid byte sequences. The client
+    # Docker image has no locale, so Ruby's default_external is ASCII-8BIT — under
+    # which `.scrub` is a no-op (every byte is "valid" binary), invalid bytes survive
+    # into JSON.parse, and a later String op (start_with?/gsub/strip against a UTF-8
+    # pattern) raises Encoding::CompatibilityError mid-pipeline (PAXEL-CLIENT-1G).
+    # The rescue keeps one unreadable/oddly-encoded file (e.g. ArgumentError
+    # "negative string size") from sinking the whole upload (PAXEL-CLIENT-19) —
+    # same "one bad input must not sink the upload" principle as #1057/#1059/#1060.
+    begin
+      File.foreach(jsonl_path, encoding: "UTF-8") do |line|
+        line = line.scrub.delete("\x00").strip
+        next if line.empty?
 
-      begin
-        entries << JSON.parse(line)
-      rescue JSON::ParserError
-        skipped += 1
+        begin
+          entries << JSON.parse(line)
+        rescue JSON::ParserError
+          skipped += 1
+        end
       end
+    rescue SystemCallError, IOError, ArgumentError => e
+      Rails.logger.warn("[TranscriptChunker] unreadable transcript #{jsonl_path}: #{e.class}: #{e.message}")
     end
 
     parse_entries(entries, skipped_count: skipped)
@@ -493,7 +508,11 @@ class TranscriptChunker
   end
 
   def strip_null_bytes(str)
-    str.delete("\x00")
+    # .scrub before .delete: String#delete raises ArgumentError "invalid byte
+    # sequence in UTF-8" on a UTF-8 string carrying invalid bytes (e.g. binary in a
+    # tool_result). Mirrors the read path above; without it one such value crashes
+    # the whole upload (PAXEL-CLIENT-1M).
+    str.scrub.delete("\x00")
   end
 
   def mark_too_short
