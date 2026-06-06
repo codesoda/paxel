@@ -115,6 +115,18 @@ class SecretScrubber
       /\bpypi-[A-Za-z0-9_-]{20,}/,
       "[REDACTED_PYPI_TOKEN]"
     ],
+    # Paxel/YC API tokens: yk_ + 48 lowercase hex (ApiToken#generate_token =
+    # "yk_" + SecureRandom.hex(24)). Users routinely paste the
+    # `curl .../upload.sh?token=yk_…` command into a session, so the raw token
+    # rides into the transcript → condensed_text → uploaded LLM prompt. The
+    # {16,} hex floor matches the real 48-hex token while skipping short
+    # placeholders (yk_abc123) and the redacted display form `yk_...<last8>`
+    # (the `...` breaks the hex run). Distinct pattern; runs before
+    # env_var_secret (which must stay last).
+    yc_token: [
+      /\byk_[0-9a-f]{16,}/,
+      "[REDACTED_YC_TOKEN]"
+    ],
     # Twilio Account SID (AC…) / API Key SID (SK…): prefix + 32 lowercase hex.
     twilio_key: [
       /\b(?:AC|SK)[0-9a-f]{32}\b/,

@@ -1,0 +1,31 @@
+# Changelog
+
+This repository tracks extracted Rails app snapshots from
+`ghcr.io/yc-software/paxel-client`.
+
+## 0.3.38.3
+
+Image:
+
+- Digest: `sha256:2bb9abc2c50fe5bd63854529a20d979b518647ca117a5d4b96e7c2c9e017b943`
+- Source revision: `c3e5b68d66a1bdd87944049a77c5ba88a4aab782`
+
+Changes from `0.3.38.0`:
+
+- Added Paxel/YC API token redaction in `SecretScrubber` for `yk_` tokens that match the production token shape.
+- Redacts matching tokens to `[REDACTED_YC_TOKEN]` before transcript-derived text can reach LLM prompts or uploaded payloads.
+
+## 0.3.38.0
+
+Image:
+
+- Digest: `sha256:8dfd0a87f1405cf6c71dffd3827904dcc33ea79adda4a6d2e68a0af3e7925205`
+- Source revision: `73e3d40b89212a5c1d3e4a2bfa7b1bc1b61c6e40`
+
+Changes from `0.3.35.10`:
+
+- Increased the client SQLite busy timeout from 5 seconds to 30 seconds to reduce write contention failures during concurrent narrative and LLM-call writes.
+- Added tolerant git sidecar reads in `ClientPipeline`, so missing or unreadable git metric files are skipped instead of aborting the upload.
+- Switched Codex, Gemini, opencode, and format detection transcript reads to explicit UTF-8 handling so invalid bytes can be scrubbed reliably in the Docker image.
+- Added rescue paths around unreadable or oddly encoded transcript files so one bad file does not sink the whole upload.
+- Hardened `TranscriptChunker` null-byte cleanup by scrubbing invalid UTF-8 before deleting NUL bytes.
