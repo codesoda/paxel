@@ -1,0 +1,11 @@
+# Client image Active Storage config. Shipped as config/storage.yml in the
+# public Docker image (see Dockerfile.client). The client never uploads to cloud
+# storage — config/environments/client.rb selects the :local Disk service — so
+# this ships NO S3 bucket name, region, or ECS task-role detail.
+local:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+test:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage") %>

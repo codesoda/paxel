@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Client Docker entrypoint: initialize the local SQLite DB, then run the
+# client analysis pipeline.
+set -e
+
+# Initialize SQLite database at runtime (ensures schema changes are always
+# picked up, even if Docker layer cache served a stale pre-built DB from
+# the image). Silence ActiveRecord's per-table "-- create_table" output to
+# keep the user-facing log uncluttered — real failures still surface via
+# stderr and the || branch.
+echo "Preparing local database..."
+schema_log=$(mktemp)
+if bin/rails runner "ActiveRecord::Schema.verbose = false; ActiveRecord::Migration.verbose = false; load Rails.root.join('db/client_schema.rb')" > "$schema_log" 2>&1; then
+  rm -f "$schema_log"
+else
+  echo "Database initialization failed:" >&2
+  cat "$schema_log" >&2
+  rm -f "$schema_log"
+  # Intentionally non-fatal (matches prior `|| true` behavior) — the pipeline
+  # will fail loudly downstream if the tables are actually missing.
+fi
+
+# Run the client pipeline
+exec bin/rails client:analyze

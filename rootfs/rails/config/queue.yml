@@ -1,0 +1,18 @@
+# Client image job-queue config. Shipped as config/queue.yml in the public
+# Docker image (see Dockerfile.client). The client runs NO SolidQueue workers or
+# dispatchers (the pipeline runs synchronously), so this exists only so Rails can
+# boot. It deliberately carries NO worker/pool/thread sizing, RDS connection
+# ceilings, or incident history — that operational detail belongs in the private
+# server config, not the public image.
+default: &default
+  dispatchers: []
+  workers: []
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default

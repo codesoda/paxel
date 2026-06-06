@@ -1,0 +1,41 @@
+# Client image database config. Shipped as config/database.yml in the public
+# Docker image (see Dockerfile.client). The client runs ONE local SQLite
+# database — DATABASE_URL is set to sqlite3 in Dockerfile.client and overrides
+# every entry below. This file intentionally carries NO server Postgres / RDS /
+# SSM-parameter / credential details; the public image must not disclose server
+# database infrastructure. The 4-database layout mirrors the server only so the
+# solid_cache / solid_queue / solid_cable `connects_to` wiring in
+# config/environments/production.rb resolves at boot — all four point at the
+# single local SQLite file via DATABASE_URL.
+default: &default
+  adapter: sqlite3
+  # Must cover the client's concurrent narrative/episode pools — each worker
+  # thread holds an AR connection across long LLM calls (LlmCall.create! +
+  # session.update!), so an undersized pool raises ConnectionTimeoutError on
+  # real multi-session runs. Matches the server-config default the client image
+  # previously inherited; the upload script forwards DB_POOL to scale it.
+  pool: <%= ENV["DB_POOL"] || ENV.fetch("RAILS_MAX_THREADS") { 50 } %>
+  timeout: 5000
+
+development:
+  <<: *default
+  database: tmp/client.sqlite3
+
+test:
+  <<: *default
+  database: tmp/client_test.sqlite3
+
+production:
+  primary: &primary_production
+    <<: *default
+    url: <%= ENV["DATABASE_URL"] %>
+    database: tmp/client.sqlite3
+  cache:
+    <<: *primary_production
+    url: <%= ENV["CACHE_DATABASE_URL"].presence || ENV["DATABASE_URL"] %>
+  queue:
+    <<: *primary_production
+    url: <%= ENV["QUEUE_DATABASE_URL"].presence || ENV["DATABASE_URL"] %>
+  cable:
+    <<: *primary_production
+    url: <%= ENV["CABLE_DATABASE_URL"].presence || ENV["DATABASE_URL"] %>
