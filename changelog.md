@@ -3,6 +3,18 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.39.1
+
+Image:
+
+- Digest: `sha256:5c5759b6763cca306cba30383d637c89a7c80926f5bde568a43c637f4be40f99`
+- Source revision: `a294a3a69589301774b04cb9e923344d8fc8652a`
+
+Changes from `0.3.38.3`:
+
+- Added the local client upload slug to packaged telemetry as `client_slug`, making user-reported client upload IDs easier to correlate with server-side uploads.
+- Updated the generated client schema to version `2026_06_07_060000`, adding `raw_payload_blob_key` on uploads for raw payload blob tracking.
+
 ## 0.3.38.3
 
 Image:

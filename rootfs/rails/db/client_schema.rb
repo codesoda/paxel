@@ -4,7 +4,7 @@
 # SQLite-compatible subset for the Docker client container.
 # Run with: RAILS_ENV=client rails db:schema:load
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_05_104822) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_07_060000) do
   create_table "chunks", id: :string, force: :cascade do |t|
     t.text "api_response"
     t.text "content", null: false
@@ -312,6 +312,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_05_104822) do
     t.json "previous_results"
     t.json "processing_log", default: [], null: false
     t.json "prompt_versions"
+    t.string "raw_payload_blob_key"
     t.integer "remaining_chunks_count", default: 0
     t.integer "remaining_commit_groups_count", default: 0
     t.integer "remaining_sessions_count", default: 0

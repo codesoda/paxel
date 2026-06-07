@@ -1645,6 +1645,11 @@ class ClientPipeline
     }
 
     {
+      # The client's LOCAL upload slug (shown in the client's own output). The
+      # server generates its OWN, unrelated slug, so without this there is no way
+      # to map a user-reported client id ("I uploaded ttkkkiyu") to the server
+      # upload. Carried in telemetry (already stored server-side) — no new column.
+      client_slug: @upload&.slug,
       pipeline_duration_s: pipeline_duration,
       host_estimate_minutes: ENV["PAXEL_HOST_ESTIMATE_MINUTES"]&.to_i,
       step_timings: @step_timings || [],
