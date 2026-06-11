@@ -138,8 +138,15 @@ class TranscriptDiscoverer
         p.repository = repository
       end
     else
+      # No git remote → key the Project by its encoded dir name. Prefer the real
+      # working directory from the sidecar (every collector writes a per-bucket "cwd")
+      # so a cwd-named blank-remote bucket — e.g. a `_codex_<basename>_<hash>` /
+      # opencode / gemini / cursor cwd bucket — shows the actual path instead of a
+      # synthetic `gsub("-","/")` of the internal bucket name. Fall back to the gsub
+      # when the sidecar carries no cwd for this dir.
+      sidecar_cwd = @sidecar&.dig("directories", dir_encoded_name, "cwd")
       upload.projects.find_or_create_by!(encoded_name: dir_encoded_name) do |p|
-        p.original_path = dir_encoded_name.gsub("-", "/")
+        p.original_path = sidecar_cwd.presence || dir_encoded_name.gsub("-", "/")
       end
     end
 

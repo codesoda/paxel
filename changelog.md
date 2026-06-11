@@ -3,6 +3,17 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.40.2
+
+Image:
+
+- Digest: `sha256:2d5afc62ad9ab903138694320137e7c397166bac3c46e19d24d1de1f8a34035c`
+- Source revision: `5b8e13899b9aced8c021c4ebf5e01a659fce2757`
+
+Changes from `0.3.40.1`:
+
+- Uses the sidecar-provided working directory for transcript projects without a git remote, preserving the real local path for cwd-named buckets.
+
 ## 0.3.40.1
 
 Image:
