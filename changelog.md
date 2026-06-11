@@ -3,6 +3,19 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.39.3
+
+Image:
+
+- Digest: `sha256:7d33786d27241ffe96798d1c9f68365f33dcc63fd10fdf48e08fd11554c6dcc6`
+- Source revision: `59444121d8e210c13fcb17fc8eb02c30bd1303d0`
+
+Changes from `0.3.39.2`:
+
+- Added disk-full detection during narrative processing, short-circuiting queued work and raising a clear out-of-disk-space error instead of cascading session failures.
+- Retries blank narrative LLM responses once and avoids caching blank single-pass or multi-pass narrative results.
+- Treats unreadable transcript sidecar files and session index files as skippable metadata failures instead of aborting discovery.
+
 ## 0.3.39.2
 
 Image:

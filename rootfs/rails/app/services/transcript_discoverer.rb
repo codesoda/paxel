@@ -70,7 +70,9 @@ class TranscriptDiscoverer
     # The downstream merge and `.dig("directories", ...)` consumers all
     # assume a Hash — bailing to nil here preserves the fall-through.
     data.is_a?(Hash) ? data : nil
-  rescue JSON::ParserError, Errno::ENOENT, IOError
+  rescue JSON::ParserError, SystemCallError, IOError
+    # SystemCallError (⊇ Errno::ENOENT, Errno::EACCES) so an unreadable sidecar
+    # is skipped, not fatal — same one-bad-file-can't-sink-the-upload contract.
     nil
   end
 
@@ -308,7 +310,11 @@ class TranscriptDiscoverer
 
     # Fallback: parse session metadata from JSONL first lines (Codex/Gemini)
     build_index_from_jsonl_meta(project_dir, encoded_name)
-  rescue JSON::ParserError
+  rescue JSON::ParserError, SystemCallError
+    # A malformed OR permission-denied/unreadable sessions-index.json must not
+    # sink the whole upload. Fall through to an empty index — process_project
+    # tolerates missing metadata (`index_data[session_id] || {}`). SystemCallError
+    # covers Errno::EACCES (PAXEL-CLIENT-1T) and ENOENT from the File.read.
     {}
   end
 

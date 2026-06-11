@@ -87,8 +87,15 @@ class SessionNarrativeAnalyzer
 
     if token_estimate <= MAX_TOKENS_PER_PART
       result = single_pass(condensed, metadata)
+      # GPT-5.5 occasionally 200s with empty/whitespace-only content (reasoning-only
+      # output, or a soft content filter). Blank results are NOT cached (see the
+      # `if narrative.present?` guards below), so retry once before giving up — a
+      # persistent blank still raises in validate_narrative! and the caller skips
+      # just this one session instead of losing it to a transient empty (PAXEL-CLIENT-2B).
+      result = single_pass(condensed, metadata) if result[:narrative].blank?
     else
       result = multi_pass(condensed, token_estimate, metadata)
+      result = multi_pass(condensed, token_estimate, metadata) if result[:narrative].blank?
     end
 
     validate_narrative!(result[:narrative])
@@ -140,18 +147,22 @@ class SessionNarrativeAnalyzer
       model: narrative_model
     }
 
-    LlmResultCache.store(
-      service_name: "SessionNarrativeAnalyzer",
-      input_text: cache_basis,
-      prompt_text: SYSTEM_PROMPT,
-      model: narrative_model,
-      prompt_version: PROMPT_VERSION,
-      result: { narrative: narrative, session_intent: intent,
-                input_tokens: result[:input_tokens],
-                output_tokens: result[:output_tokens], model: narrative_model },
-      input_tokens: result[:input_tokens],
-      output_tokens: result[:output_tokens]
-    )
+    # Never cache a blank narrative — a transient empty response must not become a
+    # permanently-cached empty across re-runs; analyze retries once on blank.
+    if narrative.present?
+      LlmResultCache.store(
+        service_name: "SessionNarrativeAnalyzer",
+        input_text: cache_basis,
+        prompt_text: SYSTEM_PROMPT,
+        model: narrative_model,
+        prompt_version: PROMPT_VERSION,
+        result: { narrative: narrative, session_intent: intent,
+                  input_tokens: result[:input_tokens],
+                  output_tokens: result[:output_tokens], model: narrative_model },
+        input_tokens: result[:input_tokens],
+        output_tokens: result[:output_tokens]
+      )
+    end
 
     result
   end
@@ -229,18 +240,21 @@ class SessionNarrativeAnalyzer
       model: narrative_model
     }
 
-    LlmResultCache.store(
-      service_name: "SessionNarrativeAnalyzer:multi",
-      input_text: cache_basis,
-      prompt_text: SYSTEM_PROMPT,
-      model: narrative_model,
-      prompt_version: PROMPT_VERSION,
-      result: { narrative: merged_narrative, session_intent: intent,
-                input_tokens: total_input,
-                output_tokens: total_output, model: narrative_model },
-      input_tokens: total_input,
-      output_tokens: total_output
-    )
+    # See single_pass: don't cache a blank merged narrative (analyze retries once).
+    if merged_narrative.present?
+      LlmResultCache.store(
+        service_name: "SessionNarrativeAnalyzer:multi",
+        input_text: cache_basis,
+        prompt_text: SYSTEM_PROMPT,
+        model: narrative_model,
+        prompt_version: PROMPT_VERSION,
+        result: { narrative: merged_narrative, session_intent: intent,
+                  input_tokens: total_input,
+                  output_tokens: total_output, model: narrative_model },
+        input_tokens: total_input,
+        output_tokens: total_output
+      )
+    end
 
     result
   end

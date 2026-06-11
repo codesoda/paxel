@@ -989,6 +989,12 @@ class ClientPipeline
     # (transient overload vs genuinely-unknown) instead of hardcoding
     # "check proxy/token" (PAXEL-CLIENT-17).
     last_error = Concurrent::AtomicReference.new(nil)
+    # Disk-full is a global, unrecoverable environment condition (the SQLite write at
+    # session.update! hits "database or disk is full" / ENOSPC). Flag it so the run
+    # fails fast with a clear "out of disk space" message instead of N cryptic
+    # per-session failures landing on the generic "check proxy/token" guidance — and
+    # so the user isn't shown only the secondary "cannot rollback" symptom (PAXEL-CLIENT-2E).
+    disk_full = Concurrent::AtomicBoolean.new(false)
     breaker = build_circuit_breaker(stage: "narrative")
     total = sessions.size
     step_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -997,7 +1003,11 @@ class ClientPipeline
     with_thread_pool(MAX_NARRATIVE_CONCURRENCY) do |executor|
       futures = sessions.map do |session|
         Concurrent::Promises.future_on(executor) do
-          next if breaker.tripped?
+          # Skip not-yet-started work once the breaker tripped OR the disk filled.
+          # disk_full short-circuits immediately (don't wait for the breaker's
+          # consecutive-failure threshold) so a full disk doesn't burn ~10 more
+          # paid LLM calls whose session.update! can't possibly succeed.
+          next if breaker.tripped? || disk_full.true?
 
           # Thread-local lets `AnthropicClient#call_llm` forward the session id
           # to the proxy via `x-paxel-session-id`, so proxy-side Sentry events
@@ -1042,6 +1052,7 @@ class ClientPipeline
           end
         rescue => e
           f = failed.increment
+          disk_full.make_true if disk_full_error?(e)
           content_filtered.increment if defined?(PaxelLlmError) && e.is_a?(PaxelLlmError::ContentFiltered)
           last_error.set(e) if defined?(PaxelLlmError) && e.is_a?(PaxelLlmError::Base)
           # Trip logic — consecutive-count threshold or any PaxelLlmError::Fatal
@@ -1077,6 +1088,16 @@ class ClientPipeline
         end
       end
       futures.each { |f| f.wait!(360) }
+    end
+
+    # Disk-full supersedes the breaker/all-failed branches below — surface the real,
+    # actionable cause (Sentry's secondary "cannot rollback - no transaction is active"
+    # masks it). Fires whether the breaker tripped on consecutive disk-full failures
+    # or only some writes failed before the disk filled.
+    if disk_full.true?
+      raise PipelineNoResults,
+        "Out of disk space — the disk Docker uses for its working database filled up " \
+        "mid-run. Free up space on that disk and re-run (cached work resumes)."
     end
 
     breaker.raise_if_tripped!(fallback_count: failed.value)
@@ -1132,6 +1153,25 @@ class ClientPipeline
     summary = "#{succeeded}/#{total} summaries"
     summary += " (#{failed_count} failed)" if failed_count > 0
     summary
+  end
+
+  # True when an error (or anything in its cause chain) is a disk-full / no-space
+  # condition. SQLite raises SQLite3::FullException ("database or disk is full");
+  # ActiveRecord wraps it in StatementInvalid with the real cause reachable via
+  # #cause; a raw filesystem write raises Errno::ENOSPC. Walk the cause chain and
+  # sniff the message so the wrapped form is caught too.
+  def disk_full_error?(error)
+    err = error
+    while err
+      return true if defined?(SQLite3::FullException) && err.is_a?(SQLite3::FullException)
+      return true if err.is_a?(Errno::ENOSPC)
+
+      msg = err.message.to_s
+      return true if msg.include?("database or disk is full") || msg.include?("No space left on device")
+
+      err = err.cause
+    end
+    false
   end
 
   # Read git data collected by the host bash script (Docker can't see host git repos).
