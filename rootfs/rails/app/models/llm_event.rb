@@ -4,6 +4,10 @@ class LlmEvent < ApplicationRecord
   scope :retries, -> { where(event_type: "retry") }
   scope :failures, -> { where(event_type: "failure") }
   scope :timeouts, -> { where(event_type: "timeout") }
+  # Server-side OpenaiClient#create spilled from a failing provider to the next
+  # one in-call; `provider` is the provider that FAILED (the serving provider is
+  # on the LlmCall row recorded alongside).
+  scope :failovers, -> { where(event_type: "failover") }
   scope :since, ->(time) { where("created_at >= ?", time) }
   scope :by_source, ->(source) { where(source: source) }
   scope :by_provider, ->(provider) { where(provider: provider) }

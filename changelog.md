@@ -3,6 +3,18 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.43.0
+
+Image:
+
+- Digest: `sha256:330dd7aa6d2b975405a13fa738dc11bce28d89c038c56b7feca06263b49554c3`
+- Source revision: `7861c988ba4f234601e57baea32a5a670b038d88`
+
+Changes from `0.3.42.0`:
+
+- Records OpenAI in-call provider failovers as `LlmEvent` rows so failed providers are visible in LLM telemetry.
+- Allows explicit provider attribution when writing LLM events and adds an `LlmEvent.failovers` scope for querying failover events.
+
 ## 0.3.42.0
 
 Image:

@@ -327,8 +327,31 @@ module AnthropicClient
 
     duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(1)
     record_llm_call(params, response, duration)
+    record_failover_events(params, response)
     log_call_telemetry(params, response, duration)
     response
+  end
+
+  # A response that arrived via OpenaiClient#create's in-call provider failover
+  # carries the failed attempts in failover_from. Record each as an LlmEvent
+  # ("failover", provider = the provider that FAILED; the serving provider is
+  # on the paired LlmCall row) so brownout spillover is queryable from
+  # telemetry — previously a successful failover left only a Rails.logger.warn
+  # line, invisible to the llm_events forensics used on 2026-06-07.
+  # safe_constantize (the dispatch_to_openai? pattern) keeps this client-safe:
+  # the client image doesn't ship OpenaiClient, so the guard is false there.
+  # An is_a? check — NOT respond_to? — so the suite's strict-args response
+  # doubles (which raise on unexpected respond_to? probes) stay untouched.
+  def record_failover_events(params, response)
+    klass = "OpenaiClient".safe_constantize
+    return unless klass && response.is_a?(klass::Response)
+    Array(response.failover_from).each do |f|
+      record_llm_event("failover",
+        error_class: f[:error_class], error_message: f[:error_message],
+        model: params[:model], provider: f[:provider])
+    end
+  rescue => e
+    Rails.logger.warn("Failover event recording failed: #{e.class} - #{e.message}")
   end
 
   # Guard: the normalizer itself must never escape as a non-PaxelLlmError. A
@@ -989,7 +1012,7 @@ module AnthropicClient
     }
   end
 
-  def record_llm_event(event_type, error_class:, error_message:, model:, attempt: nil, wait: nil)
+  def record_llm_event(event_type, error_class:, error_message:, model:, attempt: nil, wait: nil, provider: nil)
     return unless defined?(LlmEvent) && LlmEvent.table_exists?
     # Fire-and-forget: don't block the retry/error path with a DB write
     attrs = {
@@ -997,9 +1020,11 @@ module AnthropicClient
       source: "anthropic_llm",
       service_name: self.class.name,
       model: model,
-      # Derive provider from the model so GPT retry/failure rows aren't
-      # mislabeled "anthropic" on the native OpenAI path.
-      provider: model.to_s.start_with?("gpt-") ? "openai" : "anthropic",
+      # Use the caller-supplied provider when known (e.g. "failover" events name
+      # the exact provider that failed, azure_openai vs openai); otherwise
+      # derive from the model so GPT retry/failure rows aren't mislabeled
+      # "anthropic" on the native OpenAI path.
+      provider: provider || (model.to_s.start_with?("gpt-") ? "openai" : "anthropic"),
       error_class: error_class,
       error_message: error_message,
       retry_attempt: attempt,
