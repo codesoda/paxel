@@ -91,6 +91,14 @@ class GeminiNormalizer
         produced.each { |e| counts[e["type"]] += 1 }
         entries.concat(produced)
       end
+    rescue => e
+      # One malformed record must not sink the whole upload. replay_records
+      # scrubs each raw line, but a tool result reconstructed from nested parts
+      # can still carry bytes a String op (e.g. #present?) chokes on
+      # (PAXEL-CLIENT-2J: convert_tool_call → present? → invalid byte sequence).
+      # Skip + count it, same as an empty conversion.
+      skipped += 1
+      Rails.logger.warn("GeminiNormalizer: record convert failed: #{e.class}: #{e.message}")
     end
 
     log_summary(metadata, entries.size, skipped, counts)
@@ -365,7 +373,7 @@ class GeminiNormalizer
 
   # Recursively NUL-strip a tool_use input. EventExtractor persists tool args
   # (e.g. a Bash `command`) into session_events before the upload-boundary
-  # sanitizer, so a decoded   in an arg must be stripped here too.
+  # sanitizer, so a decoded NUL in an arg must be stripped here too.
   def clean_deep(value)
     case value
     when String then value.delete("\x00")

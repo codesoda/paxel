@@ -1315,7 +1315,13 @@ class ClientPipeline
   # the whole upload (PAXEL-CLIENT-1N/1P: an unrescued IO.read ENOENT in
   # collect_git_data did exactly that). Returns nil; every caller skips on nil.
   def safe_git_read(path)
-    File.read(path)
+    # encoding: "UTF-8" + scrub: a numstat/commits file can carry a non-UTF-8
+    # author name or filename, and the client Docker image has no locale
+    # (default_external = ASCII-8BIT, under which scrub is a no-op), so a bare
+    # File.read leaves invalid bytes that crash a later line.strip in
+    # parse_numstat_file / parse_commits_tsv (Encoding::CompatibilityError) and
+    # sink the whole upload (PAXEL-CLIENT-2H). Mirrors GeminiNormalizer#replay_records.
+    File.read(path, encoding: "UTF-8").scrub
   rescue SystemCallError, IOError => e
     debug("collect_git_data: skipping unreadable git file #{File.basename(path.to_s)}: #{e.class}")
     nil

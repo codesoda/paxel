@@ -3,6 +3,19 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.43.2
+
+Image:
+
+- Digest: `sha256:2e4bbbe396654f28cc8f7d186d684be392c37191e3ac6a8ab2d4c65487e5b228`
+- Source revision: `389ef5a4443de9be34b3fe33b1cb59fdb5a5a42b`
+
+Changes from `0.3.43.1`:
+
+- Reads git sidecar files as scrubbed UTF-8 so non-UTF-8 author names or filenames cannot abort upload processing.
+- Skips and logs malformed Gemini records during conversion instead of letting one bad record sink the whole upload.
+- Updated the generated client schema version to `2026_06_10_170000`.
+
 ## 0.3.43.1
 
 Image:
