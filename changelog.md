@@ -3,6 +3,21 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.44.0
+
+Image:
+
+- Digest: `sha256:af2254243713862b460efa92b65db46890644e064e5333b5397a1e7fa3420f90`
+- Source revision: `3cdbac310c128571f141eec6c0bcae99b398aba4`
+
+Changes from `0.3.43.2`:
+
+- Fixes episode scoring completion so all-skipped-no-evidence runs do not raise through an uninitialized stats variable.
+- Adds the missing legacy episode prompt signature accepted by the proxy validator for clients published during the v14 prompt window.
+- Bypasses cached blank narrative results on retry so poisoned blank cache entries can be replaced by fresh LLM output.
+- Re-scrubs nested session signal strings at upload boundaries and scrubs repeated prompt grouping keys before normalization.
+- Skips dangling symlinks during local `--since` transcript collection instead of aborting the rake task.
+
 ## 0.3.43.2
 
 Image:

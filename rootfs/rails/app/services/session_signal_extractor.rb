@@ -404,10 +404,17 @@ class SessionSignalExtractor
     user_messages.each do |m|
       wc = m[:word_count].to_i
       next if wc.zero? || wc > SHORT_PROMPT_MAX_WORDS
-      norm = normalize_prompt(m[:text])
+      # Scrub BEFORE normalizing: `norm` ships in the upload too, and
+      # normalization (lowercase + strip punctuation) breaks credential shapes
+      # so a later scrub pass can no longer recognize them. Cap it to the same
+      # 80 chars as `example` (clean prefix, no omission marker — it's a
+      # grouping key): a ≤8-word prompt can still carry an arbitrarily long
+      # word, and the /data-handling disclosure promises ≤80 chars per field.
+      scrubbed = SecretScrubber.scrub(m[:text].to_s)
+      norm = normalize_prompt(scrubbed).truncate(80, omission: "")
       next if norm.length < 2
       counts[norm] += 1
-      examples[norm] ||= SecretScrubber.scrub(m[:text].to_s).strip.truncate(80)
+      examples[norm] ||= scrubbed.strip.truncate(80)
     end
     return {} if counts.empty?
 

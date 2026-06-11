@@ -76,7 +76,18 @@ namespace :client do
         if File.directory?(f)
           FileUtils.mkdir_p(target)
         elsif f.end_with?(".jsonl")
-          next if File.mtime(f) < since_time
+          # Dir.glob matches dangling symlinks by name without statting them, so
+          # File.mtime here can raise ENOENT — and this loop runs before logging
+          # or Sentry context exists, so one stale link in ~/.claude killed the
+          # whole --since run with a raw rake abort. Same class as
+          # PAXEL-CLIENT-14 (#1060 guarded the discoverer's stat loops; this
+          # filter predates that). A dangling link has no content: skip it.
+          mtime = begin
+            File.mtime(f)
+          rescue SystemCallError
+            nil
+          end
+          next if mtime.nil? || mtime < since_time
           FileUtils.mkdir_p(File.dirname(target))
           FileUtils.ln_s(f, target)
         else

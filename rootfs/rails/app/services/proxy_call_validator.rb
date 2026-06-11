@@ -64,6 +64,7 @@ class ProxyCallValidator
     53aa3251517def32
     48788c0bd60fe4a6
     2a4fc217cd58a29e
+    690533c700f904f4
   ].freeze
   # ^ d0abbc52ededa9f2: SessionNarrativeAnalyzer MERGE_SYSTEM_PROMPT (pre-v5) — rotated 2026-06-05
   #   to sync its section names ("What the Developer Decided") + 520-word ceiling with the v5
@@ -80,14 +81,20 @@ class ProxyCallValidator
   #   session-narrative calls validating until they pull the v4 image.
   #   Remove on or after 2026-06-19 — ~14d for client image churn.
   #   (Dropped f5900d428a30d96f — DecisionClassifier v3, past its 2026-05-10 date.)
-  # ^ The next three are EpisodeSummarizer episode-prompt signatures rotated out
-  #   by the v14 calibration merge (the "## Calibration" full-scale section, layered
-  #   on v13's LOC grounding (#976) and v12's planning reword (#980)). Whichever the
-  #   currently-published client image carries, this keeps its episode scoring
-  #   working until it pulls the v14 image. Remove on or after 2026-06-19.
+  # ^ The next four are EpisodeSummarizer episode-prompt signatures. v11-v13 were
+  #   rotated out by the v14 calibration merge (#988, the "## Calibration"
+  #   full-scale section); v14 itself was rotated out 22 minutes later by #982's
+  #   CRITICAL_FRAMING rewrite (v15) and was MISSED at the time — any client
+  #   image published from that window 403s on episode scoring without it.
+  #   Whichever prompt the currently-published client image carries, this keeps
+  #   its episode scoring working until it pulls a v15+ image.
+  #   Remove on or after 2026-06-19.
   #     53aa3251517def32 — episode prompt v11 (pre-#976/#980 base)
   #     48788c0bd60fe4a6 — episode prompt v12 (#980 planning reword)
   #     2a4fc217cd58a29e — episode prompt v13 (#976 LOC grounding)
+  #     690533c700f904f4 — episode prompt v14 (#988 calibration; verified from
+  #       `git show 53a45a57:` + Digest::SHA256[0..15], matches the graced v13
+  #       recomputed the same way)
 
   LEGACY_ACCEPTED_SIGNATURES = (HARDCODED_LEGACY_SIGNATURES.to_set +
                                  ENV["YC_PROXY_LEGACY_SIGNATURES"].to_s.split(",").map(&:strip).reject(&:empty?).to_set).freeze

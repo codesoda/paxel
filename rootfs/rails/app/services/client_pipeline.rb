@@ -469,6 +469,12 @@ class ClientPipeline
     # Episode summarization (LLM via proxy)
     episodes = @upload.episodes.reload
     episode_summaries = []
+    # Declared OUTSIDE the run_step block: a variable first assigned inside a
+    # block is block-local, and the all-failed gate below reads it after the
+    # block returns. (Pre-fix this was assigned inside only — the gate raised
+    # NameError instead of PipelineNoResults whenever zero episodes scored, and
+    # failed the benign all-skipped-no-evidence run that should complete.)
+    scoring_stats = nil
     if episodes.any?
       run_step("Scoring episodes across 5 axes [#{cloud_model_label(AnthropicClient::MODELS[:fast])}]") do
         step_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -479,7 +485,7 @@ class ClientPipeline
           log_item_progress(n, total, step_start, sanitize_blurb(title).truncate(50))
         end
         episode_summaries = scoring_result.results
-        stats = scoring_result.stats
+        scoring_stats = scoring_result.stats
 
         # Debug: per-episode scoring details (only freshly scored, not DB-cached)
         ep_token_lines = episode_summaries.filter_map { |es|
@@ -496,14 +502,14 @@ class ClientPipeline
         end
 
         # Build status line with breakdown
-        parts = [ "#{stats[:scored]} scored" ]
-        parts << "#{stats[:skipped_no_evidence]} skipped (no evidence)" if stats[:skipped_no_evidence] > 0
-        parts << "#{stats[:failed_no_json]} failed (no JSON)" if stats[:failed_no_json] > 0
-        parts << "#{stats[:failed_api]} failed (API)" if stats[:failed_api] > 0
-        "#{parts.join(', ')} (#{stats[:total]} total work streams)"
+        parts = [ "#{scoring_stats[:scored]} scored" ]
+        parts << "#{scoring_stats[:skipped_no_evidence]} skipped (no evidence)" if scoring_stats[:skipped_no_evidence] > 0
+        parts << "#{scoring_stats[:failed_no_json]} failed (no JSON)" if scoring_stats[:failed_no_json] > 0
+        parts << "#{scoring_stats[:failed_api]} failed (API)" if scoring_stats[:failed_api] > 0
+        "#{parts.join(', ')} (#{scoring_stats[:total]} total work streams)"
       end
 
-      if episode_summaries.empty? && episodes.any? && stats[:skipped_no_evidence] < stats[:total]
+      if episode_summaries.empty? && episodes.any? && all_episode_scores_failed?(scoring_stats)
         raise PipelineNoResults, "All #{episodes.size} episode scores failed."
       end
     else
@@ -836,6 +842,16 @@ class ClientPipeline
   # (PipelineLogger#set_footer); only the ✓/✗ completion line scrolls into the
   # permanent log above it. Non-TTY: ▶ start + ✓/✗ end lines plus → progress to
   # stderr, exactly as before (CI, piped, or redirected output).
+  # Zero episode summaries came back — decide whether that's a real all-failed
+  # run (raise PipelineNoResults) or the one benign shape: every episode was
+  # skipped for lacking evidence, which completes without episode scores. A nil
+  # stats (scoring step aborted before assigning) counts as failed.
+  def all_episode_scores_failed?(stats)
+    return true unless stats
+
+    stats[:skipped_no_evidence].to_i < stats[:total].to_i
+  end
+
   def run_step(label)
     @step_number = (@step_number || 0) + 1
     @total_steps ||= STEP_WEIGHTS.size
@@ -1496,7 +1512,12 @@ class ClientPipeline
         session_modified_at: ts.session_modified_at&.iso8601,
         is_subagent: ts.is_subagent,
         parent_session_id: ts.parent_session&.session_id,
-        session_signals: ts.session_signals,
+        # session_signals is mostly counts/enums, but it carries free-text
+        # excerpts too (repeated_prompts examples+norms, charged_messages).
+        # Those are scrubbed at extraction time — re-scrub every string here at
+        # the boundary (fail-closed, independent of source-time scrubbing) so a
+        # signal field added later without its own scrub can't ship raw text.
+        session_signals: scrub_string_values(ts.session_signals),
         session_events: truncate_events_for_upload(ts.session_events),
         dispatch_metadata: ts.dispatch_metadata.presence,
         quality_flags: ts.quality_flags.presence,
@@ -1628,6 +1649,19 @@ class ClientPipeline
   def scrub_secret_text(text)
     return text unless text.is_a?(String) && SecretScrubber.enabled?
     SecretScrubber.scrub(text)
+  end
+
+  # Deep boundary scrub for structured payload fields (session_signals): every
+  # String VALUE in a nested Hash/Array goes through scrub_secret_text. Keys are
+  # fixed schema names, not user text — left alone. Pure function (new copy),
+  # same contract as NullByteSanitizer.
+  def scrub_string_values(obj)
+    case obj
+    when String then scrub_secret_text(obj)
+    when Array then obj.map { |v| scrub_string_values(v) }
+    when Hash then obj.transform_values { |v| scrub_string_values(v) }
+    else obj
+    end
   end
 
   # Scrub credential strings out of commit subjects before upload. Author /

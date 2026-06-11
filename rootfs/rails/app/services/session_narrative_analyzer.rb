@@ -88,14 +88,20 @@ class SessionNarrativeAnalyzer
     if token_estimate <= MAX_TOKENS_PER_PART
       result = single_pass(condensed, metadata)
       # GPT-5.5 occasionally 200s with empty/whitespace-only content (reasoning-only
-      # output, or a soft content filter). Blank results are NOT cached (see the
+      # output, or a soft content filter). New blanks are NOT cached (see the
       # `if narrative.present?` guards below), so retry once before giving up — a
       # persistent blank still raises in validate_narrative! and the caller skips
       # just this one session instead of losing it to a transient empty (PAXEL-CLIENT-2B).
-      result = single_pass(condensed, metadata) if result[:narrative].blank?
+      #
+      # The retry runs with the cache BYPASSED: images older than the store-side
+      # guard cached blank narratives, and a cache-hitting retry would return the
+      # same poisoned blank forever (the entry never ages out — fetch refreshes
+      # last_used_at). Bypass forces a fresh LLM call; store ignores the bypass
+      # flag, so a good result overwrites the poisoned entry (INSERT OR REPLACE).
+      result = LlmResultCache.with_bypass { single_pass(condensed, metadata) } if result[:narrative].blank?
     else
       result = multi_pass(condensed, token_estimate, metadata)
-      result = multi_pass(condensed, token_estimate, metadata) if result[:narrative].blank?
+      result = LlmResultCache.with_bypass { multi_pass(condensed, token_estimate, metadata) } if result[:narrative].blank?
     end
 
     validate_narrative!(result[:narrative])
