@@ -3,6 +3,17 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.44.4
+
+Image:
+
+- Digest: `sha256:f480a2ac805b8353c1627a84136d507aebd337a88fed992a5ad19d12e1b3e3b5`
+- Source revision: `89f541abd07a1a63bd028b7b545fddccb6b4778e`
+
+Changes from `0.3.44.3`:
+
+- Bumped the packaged client version to `0.3.44.4`; the extracted Rails filesystem otherwise matches the previous snapshot.
+
 ## 0.3.44.3
 
 Image:
