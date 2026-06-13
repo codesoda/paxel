@@ -3,6 +3,18 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.44.3
+
+Image:
+
+- Digest: `sha256:b0982aaa2d7333165df958984bc22ee7ce81437bcc40b6c134b9d3b8ded75be3`
+- Source revision: `dfcdb264da031bf64751f6996f2e9828b468ab30`
+
+Changes from `0.3.44.1`:
+
+- Bumped the packaged client version to `0.3.44.3`.
+- Updated the locked `brakeman` dependency from `8.0.4` to `8.0.5`.
+
 ## 0.3.44.1
 
 Image:
