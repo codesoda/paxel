@@ -3,6 +3,17 @@
 This repository tracks extracted Rails app snapshots from
 `ghcr.io/yc-software/paxel-client`.
 
+## 0.3.44.6 (rebuild 0ade0b2f025d)
+
+Image:
+
+- Digest: `sha256:1cfd516b7cafc259d601aff669be87a5364b9a232824e81a2f4f917d2c4fc064`
+- Source revision: `0ade0b2f025d43409da70a7119fd3071818bcbd3`
+
+Changes from `0.3.44.6`:
+
+- Updated the locked `net-imap` dependency from `0.6.4` to `0.6.4.1`.
+
 ## 0.3.44.6
 
 Image:
